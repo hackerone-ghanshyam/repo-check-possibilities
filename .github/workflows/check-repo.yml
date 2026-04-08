@@ -1,4 +1,4 @@
-name: Repo Full Analyzer (Public + Private + Files)
+name: Advanced URL Analyzer (Repo + File Detector)
 
 on:
   workflow_dispatch:
@@ -12,17 +12,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Analyze Repo
+      - name: Analyze GitHub Repo
         run: |
           set +e
 
           URL="${{ github.event.inputs.url }}"
-          TOKEN="${{ secrets.GH_TOKEN }}"
-
           echo "🔍 Checking URL: $URL"
           echo "-----------------------------"
 
-          # Extract USER and REPO
+          # Extract username and repo name
           PARTS=$(echo "$URL" | awk -F'github.com/' '{print $2}')
           USER=$(echo "$PARTS" | cut -d'/' -f1)
           REPO=$(echo "$PARTS" | cut -d'/' -f2)
@@ -31,45 +29,36 @@ jobs:
           echo "📦 Repo: $REPO"
 
           echo "-----------------------------"
+          echo "🔎 Checking if repo exists..."
 
-          # API call with token
-          RESPONSE=$(curl -s -H "Authorization: token $TOKEN" \
-          https://api.github.com/repos/$USER/$REPO)
+          API_URL="https://api.github.com/repos/$USER/$REPO"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" $API_URL)
 
-          EXISTS=$(echo "$RESPONSE" | grep '"full_name"' || true)
-
-          if [ -z "$EXISTS" ]; then
-            echo "❌ Repo NOT found or NO ACCESS"
-            exit 0
-          fi
-
-          # Check private or public
-          PRIVATE=$(echo "$RESPONSE" | grep '"private": true')
-
-          if [ ! -z "$PRIVATE" ]; then
-            echo "🔒 Repo is PRIVATE"
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✅ Repo EXISTS"
           else
-            echo "🔓 Repo is PUBLIC"
+            echo "❌ Repo NOT found or PRIVATE"
+            exit 0
           fi
 
           echo "-----------------------------"
           echo "📂 Fetching files..."
 
-          CONTENTS=$(curl -s -H "Authorization: token $TOKEN" \
-          https://api.github.com/repos/$USER/$REPO/contents)
+          CONTENTS_URL="https://api.github.com/repos/$USER/$REPO/contents"
+          FILES=$(curl -s $CONTENTS_URL)
 
           echo "-----------------------------"
           echo "📁 Files & Extensions:"
 
-          echo "$CONTENTS" | grep '"name"' | cut -d '"' -f4 | while read file; do
+          echo "$FILES" | grep '"name"' | cut -d '"' -f4 | while read file; do
             EXT=$(echo "$file" | grep -oE '\.[a-zA-Z0-9]+$' || true)
 
             if [ ! -z "$EXT" ]; then
-              echo "📄 $file → $EXT"
+              echo "📄 $file → Extension: $EXT"
             else
-              echo "📁 $file → folder/no extension"
+              echo "📁 $file → No extension (folder or config)"
             fi
           done
 
           echo "-----------------------------"
-          echo "✅ Report Ready"
+          echo "✅ Analysis Complete"
