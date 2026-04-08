@@ -1,4 +1,4 @@
-name: URL File Type Detector
+name: URL Analyzer (File / Repo / Type Detector)
 
 on:
   workflow_dispatch:
@@ -8,46 +8,65 @@ on:
         required: true
 
 jobs:
-  detect:
+  analyze:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check URL Type
+      - name: Analyze URL
         run: |
-          URL="${{ github.event.inputs.url }}"
-          echo "Checking URL: $URL"
+          set +e
 
-          # Get headers
+          URL="${{ github.event.inputs.url }}"
+          echo "🔍 Checking URL: $URL"
+          echo "-----------------------------"
+
+          # Get headers safely
           RESPONSE=$(curl -s -I "$URL")
 
-          echo "---- HEADERS ----"
+          echo "📦 HEADERS:"
           echo "$RESPONSE"
+          echo "-----------------------------"
 
-          # Extract content type
-          CONTENT_TYPE=$(echo "$RESPONSE" | grep -i "content-type" | awk '{print $2}')
+          # Extract Content-Type safely
+          CONTENT_TYPE=$(echo "$RESPONSE" | grep -i "^content-type:" | head -n 1 | cut -d':' -f2- | xargs || echo "unknown")
 
-          echo "Content-Type: $CONTENT_TYPE"
+          echo "📄 Content-Type: $CONTENT_TYPE"
 
-          # Detect file extension from URL
-          EXT=$(echo "$URL" | grep -oE '\.[a-zA-Z0-9]+$')
+          # Extract extension safely
+          EXT=$(echo "$URL" | grep -oE '\.[a-zA-Z0-9]+$' || true)
 
           if [ ! -z "$EXT" ]; then
-            echo "Detected file extension: $EXT"
+            echo "📁 File Extension Detected: $EXT"
           else
-            echo "No file extension found in URL"
+            echo "📁 No file extension in URL"
           fi
 
-          # Extra detection
-          if [[ "$CONTENT_TYPE" == *"text/html"* ]]; then
-            echo "This is likely a webpage"
-          elif [[ "$CONTENT_TYPE" == *"application/json"* ]]; then
-            echo "This is a JSON file"
-          elif [[ "$CONTENT_TYPE" == *"text/plain"* ]]; then
-            echo "This is a text file"
-          elif [[ "$CONTENT_TYPE" == *"application/x-yaml"* ]]; then
-            echo "This is a YAML file"
-          elif [[ "$CONTENT_TYPE" == *"python"* ]]; then
-            echo "This might be a Python file"
-          else
-            echo "Unknown or binary file type"
+          echo "-----------------------------"
+          echo "🧠 Smart Detection Result:"
+
+          # Detect GitHub repo / file
+          if [[ "$URL" == *"github.com"* && "$URL" != *"raw.githubusercontent.com"* ]]; then
+            echo "👉 This is a GitHub Repository or Directory page"
           fi
+
+          if [[ "$URL" == *"raw.githubusercontent.com"* ]]; then
+            echo "👉 This is a Raw GitHub File"
+          fi
+
+          # Detect by content type
+          if [[ "$CONTENT_TYPE" == *"text/html"* ]]; then
+            echo "👉 This is a Webpage (HTML)"
+          elif [[ "$CONTENT_TYPE" == *"application/json"* ]]; then
+            echo "👉 This is a JSON file"
+          elif [[ "$CONTENT_TYPE" == *"text/plain"* ]]; then
+            echo "👉 This is a Text file"
+          elif [[ "$CONTENT_TYPE" == *"yaml"* ]]; then
+            echo "👉 This is a YAML file"
+          elif [[ "$CONTENT_TYPE" == *"python"* ]]; then
+            echo "👉 This might be a Python file"
+          else
+            echo "👉 Unknown or Binary file"
+          fi
+
+          echo "-----------------------------"
+          echo "✅ Analysis Complete"
