@@ -1,35 +1,53 @@
-name: Check Repo Visibility
+name: URL File Type Detector
 
 on:
   workflow_dispatch:
     inputs:
-      repo_url:
-        description: "Enter GitHub Repo URL"
+      url:
+        description: "Enter URL to analyze"
         required: true
 
 jobs:
-  check-repo:
+  detect:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Extract Repo Info
-        id: extract
+      - name: Check URL Type
         run: |
-          URL="${{ github.event.inputs.repo_url }}"
-          REPO=$(echo $URL | sed 's|https://github.com/||')
-          echo "repo=$REPO" >> $GITHUB_OUTPUT
+          URL="${{ github.event.inputs.url }}"
+          echo "Checking URL: $URL"
 
-      - name: Check Repo Status
-        run: |
-          REPO="${{ steps.extract.outputs.repo }}"
-          STATUS=$(curl -o /dev/null -s -w "%{http_code}" https://api.github.com/repos/$REPO)
+          # Get headers
+          RESPONSE=$(curl -s -I "$URL")
 
-          echo "HTTP Status: $STATUS"
+          echo "---- HEADERS ----"
+          echo "$RESPONSE"
 
-          if [ "$STATUS" = "200" ]; then
-            echo "✅ Repo is PUBLIC"
-          elif [ "$STATUS" = "404" ]; then
-            echo "❌ Repo is PRIVATE or does not exist"
+          # Extract content type
+          CONTENT_TYPE=$(echo "$RESPONSE" | grep -i "content-type" | awk '{print $2}')
+
+          echo "Content-Type: $CONTENT_TYPE"
+
+          # Detect file extension from URL
+          EXT=$(echo "$URL" | grep -oE '\.[a-zA-Z0-9]+$')
+
+          if [ ! -z "$EXT" ]; then
+            echo "Detected file extension: $EXT"
           else
-            echo "⚠️ Unknown response: $STATUS"
+            echo "No file extension found in URL"
+          fi
+
+          # Extra detection
+          if [[ "$CONTENT_TYPE" == *"text/html"* ]]; then
+            echo "This is likely a webpage"
+          elif [[ "$CONTENT_TYPE" == *"application/json"* ]]; then
+            echo "This is a JSON file"
+          elif [[ "$CONTENT_TYPE" == *"text/plain"* ]]; then
+            echo "This is a text file"
+          elif [[ "$CONTENT_TYPE" == *"application/x-yaml"* ]]; then
+            echo "This is a YAML file"
+          elif [[ "$CONTENT_TYPE" == *"python"* ]]; then
+            echo "This might be a Python file"
+          else
+            echo "Unknown or binary file type"
           fi
