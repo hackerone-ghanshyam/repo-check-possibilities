@@ -1,32 +1,35 @@
-name: check repo visbility
+name: Check Repo Visibility
 
 on:
-workflow_dispatch:
-inputs:
-repo_url:
-description: "enter github repo URL"
-  required: true
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: "Enter GitHub Repo URL"
+        required: true
 
 jobs:
-check-repo:
-runs-on: ubuntu-latest
+  check-repo:
+    runs-on: ubuntu-latest
 
-  steps:
-- name: extract repo info
-id: extract
-run: |
-URL= "${{ github.event/inputs.repo_url}}"
-  REPO=$(echo $url | sed 's|https://github.com/||')
-echo "repo=$REPO" >> $GITHUB_OUTPUT
+    steps:
+      - name: Extract Repo Info
+        id: extract
+        run: |
+          URL="${{ github.event.inputs.repo_url }}"
+          REPO=$(echo $URL | sed 's|https://github.com/||')
+          echo "repo=$REPO" >> $GITHUB_OUTPUT
 
--name: check repo status
-run:|
-REPO="${{steps.extract.outputs.repo}}"
-  STATUS=$(curl -o /dev/null -s -w "%{http_code}" https://api.github.com/repo/$REPO)
+      - name: Check Repo Status
+        run: |
+          REPO="${{ steps.extract.outputs.repo }}"
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" https://api.github.com/repos/$REPO)
 
-echo "HTTP status: $STATUS"
-  echo "repo is public"
-  elif ["$STATUS" = "404"]; then
-else
-echo "Unknown response: $STATUS"
-  fi
+          echo "HTTP Status: $STATUS"
+
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Repo is PUBLIC"
+          elif [ "$STATUS" = "404" ]; then
+            echo "❌ Repo is PRIVATE or does not exist"
+          else
+            echo "⚠️ Unknown response: $STATUS"
+          fi
