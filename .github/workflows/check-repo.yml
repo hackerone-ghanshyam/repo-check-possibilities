@@ -1,10 +1,10 @@
-name: URL Analyzer (File / Repo / Type Detector)
+name: Repo Full Analyzer (Public + Private + Files)
 
 on:
   workflow_dispatch:
     inputs:
       url:
-        description: "Enter URL to analyze"
+        description: "Enter GitHub Repo URL"
         required: true
 
 jobs:
@@ -12,61 +12,64 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Analyze URL
+      - name: Analyze Repo
         run: |
           set +e
 
           URL="${{ github.event.inputs.url }}"
+          TOKEN="${{ secrets.GH_TOKEN }}"
+
           echo "🔍 Checking URL: $URL"
           echo "-----------------------------"
 
-          # Get headers safely
-          RESPONSE=$(curl -s -I "$URL")
+          # Extract USER and REPO
+          PARTS=$(echo "$URL" | awk -F'github.com/' '{print $2}')
+          USER=$(echo "$PARTS" | cut -d'/' -f1)
+          REPO=$(echo "$PARTS" | cut -d'/' -f2)
 
-          echo "📦 HEADERS:"
-          echo "$RESPONSE"
+          echo "👤 User: $USER"
+          echo "📦 Repo: $REPO"
+
           echo "-----------------------------"
 
-          # Extract Content-Type safely
-          CONTENT_TYPE=$(echo "$RESPONSE" | grep -i "^content-type:" | head -n 1 | cut -d':' -f2- | xargs || echo "unknown")
+          # API call with token
+          RESPONSE=$(curl -s -H "Authorization: token $TOKEN" \
+          https://api.github.com/repos/$USER/$REPO)
 
-          echo "📄 Content-Type: $CONTENT_TYPE"
+          EXISTS=$(echo "$RESPONSE" | grep '"full_name"' || true)
 
-          # Extract extension safely
-          EXT=$(echo "$URL" | grep -oE '\.[a-zA-Z0-9]+$' || true)
+          if [ -z "$EXISTS" ]; then
+            echo "❌ Repo NOT found or NO ACCESS"
+            exit 0
+          fi
 
-          if [ ! -z "$EXT" ]; then
-            echo "📁 File Extension Detected: $EXT"
+          # Check private or public
+          PRIVATE=$(echo "$RESPONSE" | grep '"private": true')
+
+          if [ ! -z "$PRIVATE" ]; then
+            echo "🔒 Repo is PRIVATE"
           else
-            echo "📁 No file extension in URL"
+            echo "🔓 Repo is PUBLIC"
           fi
 
           echo "-----------------------------"
-          echo "🧠 Smart Detection Result:"
+          echo "📂 Fetching files..."
 
-          # Detect GitHub repo / file
-          if [[ "$URL" == *"github.com"* && "$URL" != *"raw.githubusercontent.com"* ]]; then
-            echo "👉 This is a GitHub Repository or Directory page"
-          fi
-
-          if [[ "$URL" == *"raw.githubusercontent.com"* ]]; then
-            echo "👉 This is a Raw GitHub File"
-          fi
-
-          # Detect by content type
-          if [[ "$CONTENT_TYPE" == *"text/html"* ]]; then
-            echo "👉 This is a Webpage (HTML)"
-          elif [[ "$CONTENT_TYPE" == *"application/json"* ]]; then
-            echo "👉 This is a JSON file"
-          elif [[ "$CONTENT_TYPE" == *"text/plain"* ]]; then
-            echo "👉 This is a Text file"
-          elif [[ "$CONTENT_TYPE" == *"yaml"* ]]; then
-            echo "👉 This is a YAML file"
-          elif [[ "$CONTENT_TYPE" == *"python"* ]]; then
-            echo "👉 This might be a Python file"
-          else
-            echo "👉 Unknown or Binary file"
-          fi
+          CONTENTS=$(curl -s -H "Authorization: token $TOKEN" \
+          https://api.github.com/repos/$USER/$REPO/contents)
 
           echo "-----------------------------"
-          echo "✅ Analysis Complete"
+          echo "📁 Files & Extensions:"
+
+          echo "$CONTENTS" | grep '"name"' | cut -d '"' -f4 | while read file; do
+            EXT=$(echo "$file" | grep -oE '\.[a-zA-Z0-9]+$' || true)
+
+            if [ ! -z "$EXT" ]; then
+              echo "📄 $file → $EXT"
+            else
+              echo "📁 $file → folder/no extension"
+            fi
+          done
+
+          echo "-----------------------------"
+          echo "✅ Report Ready"
