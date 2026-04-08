@@ -1,0 +1,32 @@
+name: check repo visbility
+
+on:
+workflow_dispatch:
+inputs:
+repo_url:
+description: "enter github repo URL"
+  required: true
+
+jobs:
+check-repo:
+runs-on: ubuntu-latest
+
+  steps:
+- name: extract repo info
+id: extract
+run: |
+URL= "${{ github.event/inputs.repo_url}}"
+  REPO=$(echo $url | sed 's|https://github.com/||')
+echo "repo=$REPO" >> $GITHUB_OUTPUT
+
+-name: check repo status
+run:|
+REPO="${{steps.extract.outputs.repo}}"
+  STATUS=$(curl -o /dev/null -s -w "%{http_code}" https://api.github.com/repo/$REPO)
+
+echo "HTTP status: $STATUS"
+  echo "repo is public"
+  elif ["$STATUS" = "404"]; then
+else
+echo "Unknown response: $STATUS"
+  fi
